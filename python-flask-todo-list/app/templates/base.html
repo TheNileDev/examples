@@ -3,6 +3,15 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <nav>
   <h1>Todo List</h1>
+  <ul>
+    {% if session['token'] %}
+      <li><span>{{ session['email'] }}</span>
+      <li><a href="{{ url_for('auth.logout') }}">Log Out</a>
+    {% else %}
+      <li><a href="{{ url_for('auth.signup') }}">Register</a>
+      <li><a href="{{ url_for('auth.login') }}">Log In</a>
+    {% endif %}
+  </ul>
 </nav>
 <section class="content">
   <header>
