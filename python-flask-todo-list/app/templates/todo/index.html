@@ -2,7 +2,9 @@
 
 {% block header %}
   <h1>{% block title %}TODO{% endblock %}</h1>
-  <a class="action" href="{{ url_for('todo.create') }}">New</a>
+  {% if session['email'] %}
+    <a class="action" href="{{ url_for('todo.create') }}">New</a>
+  {% endif %}
 {% endblock %}
 
 {% block content %}
@@ -10,18 +12,24 @@
     <!--id, task_name, status, created, due_date-->
 <tr>
     <th>created</th>
+    <th>creator</th>
     <th>task name</th>
     <th>status</th>
     <th>due date</th>
-    <th>edit</th>
+    {% if session['email'] %}
+      <th>edit</th>
+    {% endif %}
 </tr>
   {% for todo in todos %}
   <tr>
       <td>{{ todo['created'].strftime('%d-%m-%Y') }}</td>
+      <td>{{ todo['creator'] }}</td>
       <td>{{ todo['task_name'] }}</td>
       <td>{{ todo['status'] }}</td>
       <td>{{ todo['due_date'].strftime('%d-%m-%Y') }}</td>
-      <td> <a class="action" href="{{ url_for('todo.update', id=todo['id']) }}">Edit</a></td>
+      {% if session['email'] %}
+        <td> <a class="action" href="{{ url_for('todo.update', id=todo['id']) }}">Edit</a></td>
+      {% endif %}
   </tr>  
   {% endfor %}
 </table>

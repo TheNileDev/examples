@@ -11,10 +11,12 @@
         value="{{ request.form['task_name'] or task['task_name'] }}" required>
     <label for="due_date">Due date</label>
     <input name="due_date" id="due_date" 
-        value="{{ request.form['due_date'] or task['due_date'].strftime('%d-%m-%Y') }}">
+        value="{{ request.form['due_date'] or task['due_date'].strftime('%d-%m-%Y') }}" required>
     <label for="status">Status</label>
     <input name="status" id="status" 
-        value="{{ request.form['status'] or task['status'] }}" required>
+        value="{{ request.form['status'] or task['status'] }}">
+    <label for="is_private">Private?</label>
+    <input type="checkbox" name="is_private" id="is_private" value="true" {{ "checked" if task['is_private'] == 1 }}>
     <input type="submit" value="Save">
   </form>
 

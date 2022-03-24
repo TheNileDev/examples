@@ -2,8 +2,10 @@ DROP TABLE IF EXISTS todo;
 
 CREATE TABLE todo (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  creator TEXT NOT NULL,
   created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   task_name TEXT NOT NULL,
   "status" TEXT NOT NULL DEFAULT "not started",
-  due_date TIMESTAMP
+  due_date TIMESTAMP,
+  is_private BOOLEAN DEFAULT 0 --false
 );
