@@ -11,7 +11,7 @@ bp = Blueprint('todo', __name__)
 
 @bp.route('/')
 def index():
-    creator = session.get('email',"")
+    creator = g.email
     db = get_db()
     todos = db.execute(
         'SELECT id, creator, task_name, status, created, due_date'
@@ -47,7 +47,7 @@ def create():
             db.execute(
                 'INSERT INTO todo (task_name, creator, due_date, status, is_private)'
                 ' VALUES (?, ?, ?, ?, ?)',
-                (task_name, session['email'], parsed_due_date.strftime("%Y-%m-%d %H:%M:%S.%f"), status, is_private)
+                (task_name, g.email, parsed_due_date.strftime("%Y-%m-%d %H:%M:%S.%f"), status, is_private)
             )
             db.commit()
             return redirect(url_for('todo.index'))
@@ -65,7 +65,7 @@ def get_task(id, check_creator=True):
     if task is None:
         abort(404, f"Task id {id} doesn't exist.")
 
-    if check_creator and task['creator'] != session['email']:
+    if check_creator and task['creator'] != g.email:
         abort(403)
 
     return task
