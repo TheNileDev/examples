@@ -34,7 +34,25 @@ class NileClient(object):
         self.base_url = url
         self.active_users = {}
 
-    def signup(self, email, password):
+    def _send(self, method, endpoint, payload):
+        if not self.base_url:
+            raise NileConfigError("Nile's URL is missing")
+        if endpoint[0] != "/":
+            raise ValueError(f"{endpoint} is not a valid endpoint, it must start with '/'")
+
+        url = self.base_url + endpoint
+
+        encoded_data = json.dumps(payload).encode('utf-8')
+        resp = _http.request(method,url,body=encoded_data, headers={'Content-Type': 'application/json'})
+        if resp.status >= 200 and resp.status <= 299:
+            data = json.loads(resp.data.decode('utf-8'))
+            return data
+        else:
+            data = json.loads(resp.data.decode('utf-8'))
+            raise NileError(data['status_code'], data['error_code'], data['message'])
+
+
+    def signup(self, email, password,**kwargs):
         '''
             Create a new user 
 
@@ -48,21 +66,12 @@ class NileClient(object):
             Raises:
                 NileError: Nile could not sign up the user
         ''' 
-        if not self.base_url:
-            raise NileConfigError("Nile's URL is missing")
-        url = self.base_url + "/users"
         payload = {
             'email' : email,
             'password' : password
         }
-        encoded_data = json.dumps(payload).encode('utf-8')
-        resp = _http.request('POST',url,body=encoded_data, headers={'Content-Type': 'application/json'})
-        if resp.status >= 200 and resp.status <= 299:
-            data = json.loads(resp.data.decode('utf-8'))
-            return True
-        else: 
-            data = json.loads(resp.data.decode('utf-8'))
-            raise NileError(data['status_code'], data['error_code'], "signup failed: " + data['message'])
+        self._send(method="POST",endpoint="/users",payload=payload)
+
 
     def login(self, email, password):
         '''
@@ -81,26 +90,18 @@ class NileClient(object):
                 NileError: Nile failed the login request
                 TokenValidationError: Nile returned a token, but it was not a valid one. 
         '''
-        url = self.base_url + "/login"
         payload = {
             'email' : email,
             'password' : password
         }
-        encoded_data = json.dumps(payload).encode('utf-8')
-        resp = _http.request('POST',url,body=encoded_data, 
-                headers={'Content-Type': 'application/json'})
-        if resp.status >= 200 and resp.status <= 299:
-            data = json.loads(resp.data.decode('utf-8'))
-            token = data['token']
-            try:
-                user = jwt.decode(token, options={"verify_signature": False})
-                self.active_users[token] = user
-                return token
-            except jwt.exceptions.InvalidTokenError as ite:
-                raise TokenValidationError(ite)
-        else:
-            data = json.loads(resp.data.decode('utf-8'))
-            raise NileError(data['status_code'], data['error_code'], "Login failed: " + data['message'])
+        data = self._send(method="POST", endpoint="/login", payload=payload)
+        token = data['token']
+        try:
+            user = jwt.decode(token, options={"verify_signature": False})
+            self.active_users[token] = user
+            return token
+        except jwt.exceptions.InvalidTokenError as ite:
+            raise TokenValidationError(ite)
 
     #TODO: option to validate against Nile Server
     def validate_token(self, token):
