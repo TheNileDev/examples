@@ -56,6 +56,11 @@ Thats it! You should see something like:
 
 and if you head over to http://127.0.0.1:5000/ you will see the world's most basic todo webapp. 
 
+## Development via Docker
+1. Install Docker and Docker Compose.
+2. Copy `.env.template` and specify a value for `NILE_URL`.
+3. Run `docker-compose up`. You should see the same message as above and access the app using the same url and port.
+
 ## To run in production
 Don't. 
 

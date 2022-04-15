@@ -1,0 +1,12 @@
+version: '3'
+services:
+  nile-flask-demo:
+    build:
+      context: .
+    environment:
+      FLASK_ENV: development
+      NILE: "${NILE_URL}"
+    ports:
+      - 5000:5000
+    volumes:
+      - "./app/:/var/lib/nile-demo/app/"

@@ -8,7 +8,7 @@ def create_app(test_config=None):
     app.config.from_mapping(
         SECRET_KEY = 'dev', # Replace in production!
         DATABASE = os.path.join(app.instance_path, 'todo.sqlite'),
-        NILE = 'http://localhost:8080',
+        NILE = os.environ.get('NILE', 'http://localhost:8080'),
     )
 
     if test_config is None:
