@@ -9,15 +9,28 @@ from app.auth import login_required
 from . import nile
 
 bp = Blueprint('todo', __name__)
+nile_client = nile.getNileClient()
 
-@bp.route('/')
+@bp.route('/', methods=('GET', 'POST'))
 def index():
     token = session.get('token')
-    nile_client = nile.getNileClient()
+    user = g.user
+    if user:
+        if request.method == 'POST':
+            org_id = request.form['select_org']
+            nile_client.set_current_org(token, org_id)
+        todos = nile_client.get_instances("tasks", token, with_envelope=False)
+        orgs = user.orgs
+        current_org = user.current_org_id
+        code = nile_client.get_invites(token)[0]['code']
 
-    todos = nile_client.get_instances("tasks", token, with_envelope=False)
-    print (todos)
-    return render_template('todo/index.html', todos=todos)
+
+    else:
+        todos = []
+        orgs = []
+        current_org = None
+        code = None
+    return render_template('todo/index.html', todos=todos, orgs = orgs, current_org=current_org, code=code)
 
 @bp.route('/add', methods=('GET', 'POST'))
 @login_required
@@ -44,7 +57,7 @@ def create():
             nile_client = nile.getNileClient()
             task = {
                     "created": str(datetime.now()),
-                    "creator": g.email,
+                    "creator": g.user.email,
                     "due_date": parsed_due_date.strftime("%d-%m-%Y"),
                     "task_name": task_name,
                     "status": status,
@@ -67,7 +80,6 @@ def get_task(id, check_creator=True):
 @login_required
 def update(id):
     task = get_task(id)
-    print(task)
     if request.method == 'POST':
         task_name = request.form['task_name']
         due_date = request.form['due_date']

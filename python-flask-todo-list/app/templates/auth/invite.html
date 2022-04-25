@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block header %}
+Welcome to Todo List App.
+{% endblock %}
+
+{% block content %}
+    {% if session['token'] %}
+        <p></p>
+        <!-- TODO: Show the friend name and org name once we have an API for it -->
+        You've been invited by a friend to collaborate on a project:
+
+        <form action="{{ url_for('auth.invite', accept_invite=invite_code)}}" method="post">
+            <input type="submit" value="Accept?">
+        </form>
+    {% else %}
+        <p>You've been invited by a friend to collaborate on their tasks. </p>
+
+        <p>To accept the invitation, you first need to be signed in to the app.</p>
+
+        <p>Click on one of the links on the top right, to register or login, and then click on 
+            <a href="{{ url_for('auth.invite', invite_code=invite_code, _external=True)|safe }}">the invitation</a> 
+            again to accept their invitation to collaborate.</p>
+    {% endif %}
+{% endblock %}

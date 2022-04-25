@@ -1,36 +1,68 @@
 {% extends 'base.html' %}
 
 {% block header %}
-  <h1>{% block title %}TODO{% endblock %}</h1>
-  {% if session['token'] %}
-    <a class="action" href="{{ url_for('todo.create') }}">New</a>
-  {% endif %}
+  <h1>{% block title %}Welcome to our Todo List App{% endblock %}</h1>
 {% endblock %}
 
 {% block content %}
-<table>
-    <!--id, task_name, status, created, due_date-->
-<tr>
-    <th>created</th>
-    <th>creator</th>
-    <th>task name</th>
-    <th>status</th>
-    <th>due date</th>
-    {% if session['token'] %}
-      <th>edit</th>
-    {% endif %}
-</tr>
-  {% for todo in todos %}
+{% if session['token'] %}
+  <script>
+    function copyText(url) {
+        navigator.clipboard.writeText(url);
+    }
+  </script>
+
+  {% if orgs|length > 1 %}
+  <form method="POST">
+    <label for="select_org">Select Project:</label>
+      <select name="select_org" id="select_org">
+        {% for org in orgs %}
+          <option value="{{ org['id'] }}" {% if org['id']|string == current_org %} selected="selected"{% endif %}>{{ org['org_name'] }}</option>
+        {% endfor %}
+      </select>
+      <input type="submit" value="Switch Project">
+  </form>
+  {% else %}
+    <p></p>
+    You are currently working on project: {{ orgs[0]['org_name'] }}
+    <p></p>
+  {% endif %}
+
+  Invite a collaborator to this project: 
+  <a href="#" onclick="javascript:copyText('{{ url_for('auth.invite', invite_code=code, _external=True)|safe }}');"> click to copy invite link to clipboard</a>
+  <p></p>
+  <header>
+  <h1>Todos</h1>
+  <a class="action" href="{{ url_for('todo.create') }}">New</a>
+  </header>
+
+  <table>
+      <!--id, task_name, status, created, due_date-->
   <tr>
-      <td>{{ todo['created'] }}</td>
-      <td>{{ todo['creator'] }}</td>
-      <td>{{ todo['task_name'] }}</td>
-      <td>{{ todo['status'] }}</td>
-      <td>{{ todo['due_date'] }}</td>
+      <th>created</th>
+      <th>creator</th>
+      <th>task name</th>
+      <th>status</th>
+      <th>due date</th>
       {% if session['token'] %}
-        <td> <a class="action" href="{{ url_for('todo.update', id=todo['id']) }}">Edit</a></td>
+        <th>edit</th>
       {% endif %}
-  </tr>  
-  {% endfor %}
-</table>
+  </tr>
+    {% for todo in todos %}
+    <tr>
+        <td>{{ todo['created'] }}</td>
+        <td>{{ todo['creator'] }}</td>
+        <td>{{ todo['task_name'] }}</td>
+        <td>{{ todo['status'] }}</td>
+        <td>{{ todo['due_date'] }}</td>
+        {% if session['token'] %}
+          <td> <a class="action" href="{{ url_for('todo.update', id=todo['id']) }}">Edit</a></td>
+        {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p></p>
+  <a href="{{ url_for('auth.signup') }}">Register</a> or <a href="{{ url_for('auth.login') }}">Log In</a> to start managing tasks.
+{% endif %}
 {% endblock %}

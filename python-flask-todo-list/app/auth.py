@@ -34,9 +34,6 @@ def signup():
 
                 with current_app.open_resource('tasks.json') as f:
                     for org in orgs:
-                        print("Creating schema in org: ")
-                        print(org)
-                        print("token (for debugging:" + token)
                         nile_client.create_entity(f.read().decode('utf8'), org_id=org['id'], token=token)
                 return redirect(url_for('index'))
             except nile.NileError as ne:
@@ -62,9 +59,11 @@ def login():
 
 @bp.route('/logout')
 def logout():
-    nile_client.logout(session['token'])
-    session.clear()
-    return redirect(url_for('index'))
+    token = session.get('token')
+    if token:
+        nile_client.logout(token)
+        session.clear()
+    return redirect(url_for('todo.index'))
 
 def login_required(view):
     @functools.wraps(view)
@@ -79,12 +78,26 @@ def login_required(view):
         return view(**kwargs)
     return wrapped_view
 
+@bp.route('/invite', methods=('GET', 'POST'))
+def invite():
+    if request.method == 'POST':
+        code = request.args.get('accept_invite')
+        token = session.get('token')
+        nile_client.accept_invite(code, token)
+        nile_client.get_user(token, use_cache = False) #refresh cache for this user, so we'll see the new org
+        return redirect(url_for('todo.index'))
+    else:
+        args = request.args
+        invite_code = args.get('invite_code')
+        token = session.get('token')
+        # TODO: Once we have Nile API to get an invite by code, we'll want to render the invite page with inviter and org details
+        #       At least for logged-in users
+        return render_template('auth/invite.html', invite_code=invite_code)
+
 @bp.before_app_request
 def load_logged_in_user():
     token = session.get('token')
-    if token is None:
-        g.email = None
-    else:
-        g.email = nile_client.getUserEmail(token)
-        g.orgs =  nile_client.get_orgs(token)
-        g.current_org = nile_client.get_current_org(token)
+    g.user = nile_client.get_user(token)
+    if g.user is None:
+        session.clear() # We don't know who this is, so the token was useless
+ 

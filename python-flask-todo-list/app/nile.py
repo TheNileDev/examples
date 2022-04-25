@@ -1,4 +1,6 @@
+from enum import Enum
 from tokenize import Token
+from dataclasses import dataclass
 import urllib3
 import json
 import jwt 
@@ -17,13 +19,22 @@ class NileError(Exception):
         self.message = message
 
     def __str__(self):
-        return '{}: {}'.format(self.status_code, self.message)
+        return '{}: {} - {}'.format(self.status_code, self.error_code, self.message)
 
 class NileConfigError(Exception):
     pass
 
 class TokenValidationError(Exception):
     pass
+
+@dataclass
+class NileUser:
+    id: int
+    email: str
+    orgs: dict
+    current_org_id: int
+
+
 
 def getNileClient():
     if not _nile_client:
@@ -130,8 +141,7 @@ class NileClient(object):
         data = self._send(method="POST", endpoint="/auth/login", payload=payload)
         token = data['token']
         try:
-            user = jwt.decode(token, options={"verify_signature": False})
-            self.active_users[token] = user
+            self.get_user(token) # this loads the user details from Nile and generates an active session for the token
             return token
         except jwt.exceptions.InvalidTokenError as ite:
             raise TokenValidationError(ite)
@@ -160,11 +170,23 @@ class NileClient(object):
         except:
             raise TokenValidationError("Token is parsable, but not a known active session")
     
-    def getUserEmail(self, token):
-        if self.active_users.get(token):
-            return self.active_users.get(token).get('sub')
+    def get_user(self, token, use_cache = True) -> NileUser:
+        if self.active_users.get(token) and use_cache:
+            return self.active_users.get(token)
         else: 
-            return None
+            if token:
+                try:
+                    user = self._send("GET", "/me", token=token)
+                except NileError as ne:
+                    # Looks like Nile invalidated the current user session, so we can't get it
+                    return None
+                n_user = NileUser(id=user['id'], email=user['email'], orgs=None, current_org_id=None)
+                self.active_users[token] = n_user
+                # populate the orgs while we are here, so we'll know we have them if needed later:
+                self.get_orgs(token)
+                return n_user
+            else:
+                return None
 
     def logout(self, token):
         '''
@@ -177,26 +199,51 @@ class NileClient(object):
 #######################
     # TODO: is there a reasonable way not to keep passing tokens into the library?
     def get_orgs(self, token):
-        user = self.active_users.get(token)
-        if user and "orgs" in user:
-            return user['orgs']
-        elif user:
-            orgs = self._send("GET", "/orgs", token=token)
-            user['orgs'] = orgs
-            user['current_org'] = orgs[0]
-            self.active_users[token] = user
-            return orgs
+        user = self.get_user(token)
+        if user:
+            if user.orgs:
+                return user.orgs
+            else:
+                orgs = self._send("GET", "/orgs", token=token)
+                user.orgs = orgs
+                user.current_org_id = orgs[0]['id']
+                return orgs
         else:
-            return None
+            return []
 
     def get_current_org(self, token):
         user = self.active_users.get(token)
         if user:
-            return user.get('current_org')
+            return user.current_org_id
+        else:
+            return None
 
     def set_current_org(self, token, org):
         user = self.active_users.get(token)
-        user['current_org'] = org
+        user.current_org_id = org
+
+#####################
+# Invites
+####################
+
+    def get_invites(self, token, just_current_org=True, just_current_user=True):
+        #TODO: Org filter in Nile is currently a bit buggy, so I'm filtering here
+        curr_org = self.get_current_org(token)
+        user = self.get_user(token).id
+        invites = self._send("GET","/invites",token=token)
+        maybe_filter_orgs = [inv for inv in invites if inv.get('org') == int(curr_org) or not just_current_org]
+        maybe_filter_users = [inv for inv in maybe_filter_orgs if inv['inviter'] == user or not just_current_user]
+
+        return maybe_filter_users
+
+    def accept_invite(self, invite_code, token):
+        try:
+            self._send("POST",f"/invites/{invite_code}/accept", token=token)
+        except NileError as ne:
+            if ne.error_code == "user_already_in_org":
+                pass
+            else:
+                raise ne
 
 
 #########################
@@ -204,26 +251,19 @@ class NileClient(object):
 # TODO: Remove the org/token after we allow a "developer" connection that creates entities for all orgs
 ########################
     def entity_exists(self, name, org_id, token):
-        print ("looking for..." + name)
         try:
             self._send("GET",f"/admin/entities/{name}?org_id={org_id}", token=token)
-            print("found entity?")
             return True
         except NileError as ne:
             if ne.status_code == 404:
-                print("not found entity")
                 return False
             else:
-                print (ne)
                 raise ne
 
     def create_entity(self, schema, org_id, token):
         # TODO: When we get proper error on duplicates, we won't need to check if entity already exist
         # TODO: Schema validation here pls
-        print ("got schema? " + schema)
         parsed = json.loads(schema)
-        print ("pasrsed")
-        print(parsed)
         self.entity_exists(parsed['name'], org_id, token) 
         self._send("POST", f"/admin/entities?org_id={org_id}", payload=parsed, token=token)
 
@@ -234,11 +274,10 @@ class NileClient(object):
         This returns all instances of entity that belong to the current org
     '''
     def get_instances(self, entity, token, with_envelope=True):
-        print (token)
-        org = self.get_current_org(token)
-        if org is None:
+        org_id = self.get_current_org(token)
+        if org_id is None:
             return []
-        data = self._send("GET", f"/custom-data/{entity}?org_id={org['id']}", token=token)
+        data = self._send("GET", f"/custom-data/{entity}?org_id={org_id}", token=token)
         if with_envelope:
             return data
         else:
@@ -250,10 +289,10 @@ class NileClient(object):
             return res
 
     def get_instance(self, entity, id, token, with_envelope=True):
-        org = self.get_current_org(token)
-        if org is None:
+        org_id = self.get_current_org(token)
+        if org_id is None:
             return None
-        data = self._send("GET", f"/custom-data/{entity}/{id}?org_id={org['id']}", token=token)
+        data = self._send("GET", f"/custom-data/{entity}/{id}?org_id={org_id}", token=token)
         if with_envelope:
             return data
         else:
@@ -262,17 +301,17 @@ class NileClient(object):
             return flat
 
     def create_instance(self, entity, instance, token):
-        org = self.get_current_org(token)
-        if org:
-            self._send("POST", f"/custom-data/{entity}?org_id={org['id']}", payload=instance, token=token)
+        org_id = self.get_current_org(token)
+        if org_id:
+            self._send("POST", f"/custom-data/{entity}?org_id={org_id}", payload=instance, token=token)
 
     def update_instance(self, entity, id, instance, token):
-        org = self.get_current_org(token)
-        if org:
+        org_id = self.get_current_org(token)
+        if org_id:
             formatted = {"properties": instance}
-            self._send("PUT", f"/custom-data/{entity}/{id}?org_id={org['id']}", payload=formatted, token=token)
+            self._send("PUT", f"/custom-data/{entity}/{id}?org_id={org_id}", payload=formatted, token=token)
 
     def delete_instance(self, entity, id, token):
-        org = self.get_current_org(token)
-        if org:
-            self._send("DELETE", f"/custom-data/{entity}/{id}?org_id={org['id']}", token=token)
+        org_id = self.get_current_org(token)
+        if org_id:
+            self._send("DELETE", f"/custom-data/{entity}/{id}?org_id={org_id}", token=token)
