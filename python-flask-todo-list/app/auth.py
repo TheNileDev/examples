@@ -2,7 +2,7 @@ import functools
 from . import nile
 
 from flask import (
-    Blueprint, flash, g, redirect, render_template, request, session, url_for
+    Blueprint, flash, g, redirect, render_template, request, session, url_for, current_app
 )
 
 bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -23,7 +23,22 @@ def signup():
         if error is None:
             try:
                 nile_client.signup(email, password)
-                return redirect(url_for("auth.login"))
+
+                # Temporary hack: right now schema is per org, and org is generated on signup (only, for now)
+                # So we need to create the schema. Error handling is crappy because this is a terrible hack
+                # While we are here, lets complete the login and let the user through
+                token = nile_client.login(email, password)
+                session['token'] =  token
+
+                orgs = nile_client.get_orgs(token)
+
+                with current_app.open_resource('tasks.json') as f:
+                    for org in orgs:
+                        print("Creating schema in org: ")
+                        print(org)
+                        print("token (for debugging:" + token)
+                        nile_client.create_entity(f.read().decode('utf8'), org_id=org['id'], token=token)
+                return redirect(url_for('index'))
             except nile.NileError as ne:
                 flash(ne.message)
 
@@ -71,3 +86,5 @@ def load_logged_in_user():
         g.email = None
     else:
         g.email = nile_client.getUserEmail(token)
+        g.orgs =  nile_client.get_orgs(token)
+        g.current_org = nile_client.get_current_org(token)

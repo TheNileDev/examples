@@ -22,11 +22,11 @@
 </tr>
   {% for todo in todos %}
   <tr>
-      <td>{{ todo['created'].strftime('%d-%m-%Y') }}</td>
+      <td>{{ todo['created'] }}</td>
       <td>{{ todo['creator'] }}</td>
       <td>{{ todo['task_name'] }}</td>
       <td>{{ todo['status'] }}</td>
-      <td>{{ todo['due_date'].strftime('%d-%m-%Y') }}</td>
+      <td>{{ todo['due_date'] }}</td>
       {% if session['token'] %}
         <td> <a class="action" href="{{ url_for('todo.update', id=todo['id']) }}">Edit</a></td>
       {% endif %}

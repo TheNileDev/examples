@@ -1,0 +1,15 @@
+{
+    "name": "tasks",
+    "schema": {
+      "type": "object",
+      "properties": {
+          "creator": {"type": "string"},
+          "created": {"type": "string"},
+          "task_name": {"type": "string"},
+          "status": {"type": "string"},
+          "due_date": {"type": "string"},
+          "is_private": {"type": "boolean"}
+       },   
+       "required": ["creator", "created", "task_name", "status", "due_date"]
+    }
+  }

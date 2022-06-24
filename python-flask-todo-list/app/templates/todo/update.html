@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
 {% block header %}
-  <h1>{% block title %}New Task{% endblock %}</h1>
+  <h1>{% block title %}Updating Task{% endblock %}</h1>
 {% endblock %}
 
 {% block content %}
@@ -11,7 +11,7 @@
         value="{{ request.form['task_name'] or task['task_name'] }}" required>
     <label for="due_date">Due date</label>
     <input name="due_date" id="due_date" 
-        value="{{ request.form['due_date'] or task['due_date'].strftime('%d-%m-%Y') }}" required>
+        value="{{ request.form['due_date'] or task['due_date'] }}" required>
     <label for="status">Status</label>
     <input name="status" id="status" 
         value="{{ request.form['status'] or task['status'] }}">

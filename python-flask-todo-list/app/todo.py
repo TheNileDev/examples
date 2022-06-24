@@ -4,22 +4,19 @@ from flask import (
 from werkzeug.exceptions import abort
 from datetime import datetime
 
-from app.db import get_db
 from app.auth import login_required
+
+from . import nile
 
 bp = Blueprint('todo', __name__)
 
 @bp.route('/')
 def index():
-    creator = g.email
-    db = get_db()
-    todos = db.execute(
-        'SELECT id, creator, task_name, status, created, due_date'
-        ' FROM todo'
-        ' where is_private = ? or creator = ? '
-        ' ORDER BY created DESC',
-        (False, creator)
-    ).fetchall()
+    token = session.get('token')
+    nile_client = nile.getNileClient()
+
+    todos = nile_client.get_instances("tasks", token, with_envelope=False)
+    print (todos)
     return render_template('todo/index.html', todos=todos)
 
 @bp.route('/add', methods=('GET', 'POST'))
@@ -43,30 +40,26 @@ def create():
         if error is not None:
             flash(error)
         else:
-            db = get_db()
-            db.execute(
-                'INSERT INTO todo (task_name, creator, due_date, status, is_private)'
-                ' VALUES (?, ?, ?, ?, ?)',
-                (task_name, g.email, parsed_due_date.strftime("%Y-%m-%d %H:%M:%S.%f"), status, is_private)
-            )
-            db.commit()
+            token = session.get('token')
+            nile_client = nile.getNileClient()
+            task = {
+                    "created": str(datetime.now()),
+                    "creator": g.email,
+                    "due_date": parsed_due_date.strftime("%d-%m-%Y"),
+                    "task_name": task_name,
+                    "status": status,
+                    "is_private": is_private
+                }
+            nile_client.create_instance("tasks", task, token)
             return redirect(url_for('todo.index'))
-
     return render_template('todo/create.html')
 
 def get_task(id, check_creator=True):
-    task = get_db().execute(
-        'SELECT id, task_name, status, created, creator, due_date, is_private'
-        ' FROM todo'
-        ' WHERE id = ?',
-        (id,)
-    ).fetchone()
-
+    nile_client = nile.getNileClient()
+    token = session.get('token')
+    task = nile_client.get_instance("tasks", id, token, with_envelope=False)
     if task is None:
         abort(404, f"Task id {id} doesn't exist.")
-
-    if check_creator and task['creator'] != g.email:
-        abort(403)
 
     return task
 
@@ -74,6 +67,7 @@ def get_task(id, check_creator=True):
 @login_required
 def update(id):
     task = get_task(id)
+    print(task)
     if request.method == 'POST':
         task_name = request.form['task_name']
         due_date = request.form['due_date']
@@ -92,13 +86,17 @@ def update(id):
         if error is not None:
             flash(error)
         else:
-            db = get_db()
-            db.execute(
-                'UPDATE todo SET task_name = ?, due_date = ?, status = ?, is_private = ?'
-                ' WHERE id = ?',
-                (task_name, parsed_due_date.strftime("%Y-%m-%d %H:%M:%S.%f"), status, is_private, id)
-            )
-            db.commit()
+            token = session.get('token')
+            nile_client = nile.getNileClient()
+            task = {
+                "created": task['created'],
+                "creator": task['creator'],
+                "due_date": parsed_due_date.strftime("%d-%m-%Y"),
+                "task_name": task_name,
+                "status": status,
+                "is_private": is_private
+            }
+            nile_client.update_instance( "tasks", id, task, token)
             return redirect(url_for('todo.index'))
 
     return render_template('todo/update.html', task=task)
@@ -107,7 +105,7 @@ def update(id):
 @login_required
 def delete(id):
     get_task(id)
-    db = get_db()
-    db.execute('DELETE FROM todo WHERE id = ?', (id,))
-    db.commit()
+    token = session.get('token')
+    nile_client = nile.getNileClient()
+    nile_client.delete_instance("tasks", id, token)
     return redirect(url_for('todo.index'))

@@ -2,6 +2,7 @@ from tokenize import Token
 import urllib3
 import json
 import jwt 
+import logging
 
 # This is a fairly generic Python wrapper of Nile's REST APIs.
 # We hope to publish a more complete version of this as a package eventually
@@ -30,6 +31,7 @@ def getNileClient():
     return _nile_client
 
 class NileClient(object):
+    # TODO: allow developer auth
     def __init__(self,url):
         self.base_url = url
         self.active_users = {}
@@ -40,32 +42,48 @@ class NileClient(object):
         except:
             print("Failed to connect to Nile at " + url +" or Nile is unhealthy")
 
-    def _send(self, method, endpoint, payload=None, return_headers=False):
+    def _send(self, method, endpoint, payload=None, return_headers=False, token=None):
         if not self.base_url:
             raise NileConfigError("Nile's URL is missing")
         if endpoint[0] != "/":
             raise ValueError(f"{endpoint} is not a valid endpoint, it must start with '/'")
 
         url = self.base_url + endpoint
+        req_headers={'Content-Type': 'application/json'}
+
+        if token:
+            req_headers['Authorization'] = 'Bearer ' + token
 
         if payload:
             encoded_data = json.dumps(payload).encode('utf-8')
-            resp = _http.request(method,url,body=encoded_data, headers={'Content-Type': 'application/json'})
+            resp = _http.request(method,url,body=encoded_data, headers=req_headers)
         else:
-            assert method == "GET", "sending without body is only expected for GET requests"
-            resp = _http.request(method,url,headers={'Content-Type': 'application/json'})
-        if resp.status >= 200 and resp.status <= 299:
+            resp = _http.request(method,url,headers=req_headers)
+
+        if resp.status == 204:
+            return {
+                "status_code": 204,
+                "error_code": "success_without_content",
+                "message": "request successful, no response data"
+            }
+        elif resp.status >= 200 and resp.status <= 299:
             data = json.loads(resp.data.decode('utf-8'))
             if return_headers:
                 return data, resp.headers
             else:
                 return data
+        elif resp.status == 404:
+            raise NileError(resp.status, resp.status, "resource not found")
+
         elif resp.status >=400 and resp.status <= 499:
             data = json.loads(resp.data.decode('utf-8'))
             raise NileError(data['status_code'], data['error_code'], data['message'])
         else:
             raise NileError(resp.status, resp.status, "internal server error")
 
+#########################
+# User Auth starts here (TODO: separate modules)
+########################
 
     def signup(self, email, password,**kwargs):
         '''
@@ -154,4 +172,107 @@ class NileClient(object):
         '''
         self.active_users.pop(token, None)
 
-    
+#######################
+# Orgs
+#######################
+    # TODO: is there a reasonable way not to keep passing tokens into the library?
+    def get_orgs(self, token):
+        user = self.active_users.get(token)
+        if user and "orgs" in user:
+            return user['orgs']
+        elif user:
+            orgs = self._send("GET", "/orgs", token=token)
+            user['orgs'] = orgs
+            user['current_org'] = orgs[0]
+            self.active_users[token] = user
+            return orgs
+        else:
+            return None
+
+    def get_current_org(self, token):
+        user = self.active_users.get(token)
+        if user:
+            return user.get('current_org')
+
+    def set_current_org(self, token, org):
+        user = self.active_users.get(token)
+        user['current_org'] = org
+
+
+#########################
+# Entity creation APIs starts here (TODO: separate modules)
+# TODO: Remove the org/token after we allow a "developer" connection that creates entities for all orgs
+########################
+    def entity_exists(self, name, org_id, token):
+        print ("looking for..." + name)
+        try:
+            self._send("GET",f"/admin/entities/{name}?org_id={org_id}", token=token)
+            print("found entity?")
+            return True
+        except NileError as ne:
+            if ne.status_code == 404:
+                print("not found entity")
+                return False
+            else:
+                print (ne)
+                raise ne
+
+    def create_entity(self, schema, org_id, token):
+        # TODO: When we get proper error on duplicates, we won't need to check if entity already exist
+        # TODO: Schema validation here pls
+        print ("got schema? " + schema)
+        parsed = json.loads(schema)
+        print ("pasrsed")
+        print(parsed)
+        self.entity_exists(parsed['name'], org_id, token) 
+        self._send("POST", f"/admin/entities?org_id={org_id}", payload=parsed, token=token)
+
+##############
+# Instances
+###############
+    '''
+        This returns all instances of entity that belong to the current org
+    '''
+    def get_instances(self, entity, token, with_envelope=True):
+        print (token)
+        org = self.get_current_org(token)
+        if org is None:
+            return []
+        data = self._send("GET", f"/custom-data/{entity}?org_id={org['id']}", token=token)
+        if with_envelope:
+            return data
+        else:
+            res = []
+            for instance in data:
+                flat = instance['properties']
+                flat['id'] = instance['id']
+                res.append(flat)
+            return res
+
+    def get_instance(self, entity, id, token, with_envelope=True):
+        org = self.get_current_org(token)
+        if org is None:
+            return None
+        data = self._send("GET", f"/custom-data/{entity}/{id}?org_id={org['id']}", token=token)
+        if with_envelope:
+            return data
+        else:
+            flat = data['properties']
+            flat['id'] = data['id']
+            return flat
+
+    def create_instance(self, entity, instance, token):
+        org = self.get_current_org(token)
+        if org:
+            self._send("POST", f"/custom-data/{entity}?org_id={org['id']}", payload=instance, token=token)
+
+    def update_instance(self, entity, id, instance, token):
+        org = self.get_current_org(token)
+        if org:
+            formatted = {"properties": instance}
+            self._send("PUT", f"/custom-data/{entity}/{id}?org_id={org['id']}", payload=formatted, token=token)
+
+    def delete_instance(self, entity, id, token):
+        org = self.get_current_org(token)
+        if org:
+            self._send("DELETE", f"/custom-data/{entity}/{id}?org_id={org['id']}", token=token)
